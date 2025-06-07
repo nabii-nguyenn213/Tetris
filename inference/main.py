@@ -132,7 +132,6 @@ def main():
         game.board.print_next_shape(next_shape, game.point)
 
         running = not game.game_over()
-        print(running)
         drop_interval = game.speed
 
         
@@ -147,7 +146,6 @@ def main():
                 game.current_coor = game.drop_piece()
             else : 
                 running = not game.game_over()
-                print(running)
                 game.spawn_pieces(next = next_shape)
                 next_shape = game.piece.generate_pieces()
 
