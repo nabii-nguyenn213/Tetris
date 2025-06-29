@@ -61,6 +61,7 @@ def gameover():
 def main():
     global point
     game = Game()
+    game.current_lines_clear = 0
     drop_interval = game.speed
     last_drop = time.monotonic()
     running = True
@@ -77,7 +78,7 @@ def main():
 
     game.board.printBoard()
 
-    next_shape = game.piece.generate_pieces()
+    next_shape, game.next_shape_val = game.piece.generate_pieces()
     game.board.print_next_shape(next_shape, game.point)
 
     while running:
@@ -97,7 +98,10 @@ def main():
             if key == ' ':
                     print("hard drop")
                     game.current_coor = game.place_down()
-                    game.board.placed_coor.extend(game.current_coor)
+                    if game._piece_val in game.board.placed_coor : 
+                        game.board.placed_coor[game._piece_val].extend(game.current_coor)
+                    else : 
+                        game.board.placed_coor[game._piece_val] = [*game.current_coor]
                     touched = True
 
             if not touched: 
@@ -120,8 +124,22 @@ def main():
 
             else : 
                 running = not game.game_over()
+                game.current_coor = None
+                game.update_board()
+                game.board.placed_coor, droprow = game.delete_completed_row()
+                game.update_board()
+
+                game.point_and_level()
+                game.update_board()
+
+                if droprow: 
+                    game.down_row()
+
+                game.board.placed_coor = game.update_placed_coor()
+                game.update_board()
+
                 game.spawn_pieces(next = next_shape)
-                next_shape = game.piece.generate_pieces()
+                next_shape, game.next_shape_val = game.piece.generate_pieces()
 
             # --------------------------------
 
@@ -146,12 +164,24 @@ def main():
                 game.current_coor = game.drop_piece()
             else : 
                 running = not game.game_over()
-                game.spawn_pieces(next = next_shape)
-                next_shape = game.piece.generate_pieces()
 
-            game.update_board()
-            game.board.placed_coor = game.update_placed_coor()
-            game.point_and_level()
+                game.current_coor = None
+                game.update_board()
+                game.board.placed_coor, droprow = game.delete_completed_row()
+                game.update_board()
+
+                game.point_and_level()
+                game.update_board()
+
+                if droprow: 
+                    game.drop_row()
+
+                game.board.placed_coor = game.update_placed_coor()
+                game.update_board()
+
+                game.spawn_pieces(next = next_shape)
+                next_shape, game.next_shape_val = game.piece.generate_pieces()
+
             game.update_board()
             game.board.printBoard()
             game.board.print_next_shape(next_shape, game.point)

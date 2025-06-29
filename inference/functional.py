@@ -1,4 +1,4 @@
-from sys import deactivate_stack_trampoline
+from sys import _enablelegacywindowsfsencoding, deactivate_stack_trampoline
 from board import Board
 from pieces import Pieces
 import numpy as np
@@ -16,28 +16,41 @@ class Game :
         self.speed = 0.5
 
     def spawn_pieces(self, next = None):
-        self._piece = self.piece.generate_pieces(next=next)
+        if next is not None : 
+            self._piece = self.piece.generate_pieces(next=next)
+            self._piece_val = self.next_shape_val
+        else : 
+            self._piece, self._piece_val = self.piece.generate_pieces()
         row = self.board.row
         col = self.board.col
         spawn_coor = (0, col // 2 - 1)
-        self.current_coor = self.board.place_spawn_piece(self._piece, spawn_coor)
+        self.current_coor = self.board.place_spawn_piece(self._piece, self._piece_val, spawn_coor)
 
     def drop_piece(self):
         return [(min(r+1, self.board.row-1), c) for (r, c) in self.current_coor]
 
     def _check_touch(self):
+        if not self.current_coor : return True
         for (r, c) in self.current_coor: 
             # We need to extract the lowest row of each col
             lowest_block_per_col = [(max(x for (x, y0) in self.current_coor if y0 == y), y)
                 for y in {y for (_, y) in self.current_coor}]
+        # print(lowest_block_per_col)
         for (r, c) in lowest_block_per_col: 
             if r == self.board.row - 1 : 
-                self.board.placed_coor.extend(self.current_coor)
+                if self._piece_val in self.board.placed_coor: 
+                    self.board.placed_coor[self._piece_val].extend(self.current_coor)
+                else : 
+                    self.board.placed_coor[self._piece_val] = [*self.current_coor]
                 return True
-            for (ro, co) in self.board.placed_coor:
-                if (r + 1, c) == (ro, co): 
-                    self.board.placed_coor.extend(self.current_coor)
-                    return True
+            for coors in self.board.placed_coor.values():
+                for (ro, co) in coors:
+                    if (r + 1, c) == (ro, co): 
+                        if self._piece_val in self.board.placed_coor: 
+                            self.board.placed_coor[self._piece_val].extend(self.current_coor)
+                        else : 
+                            self.board.placed_coor[self._piece_val] = [*self.current_coor]
+                        return True
         return False
 
     def shadow_piece(self):
@@ -50,10 +63,10 @@ class Game :
             for (ro, co)in self.current_coor: 
                 if 0 <= ro <= self.board.row - 1: 
                     column_slide[ro] = 0
-            if np.count_nonzero(column_slide == 1) == 0: # if there is no one
+            if np.count_nonzero(column_slide != 0) == 0: # if there is no one
                 self.min_dif = min(self.min_dif, current_dif)
             else : 
-                first_idx_one = np.where(column_slide == 1)[0][0]
+                first_idx_one = np.where(column_slide != 0)[0][0]
                 current_dif = first_idx_one - r
 
             self.min_dif = min(self.min_dif, current_dif)
@@ -61,9 +74,10 @@ class Game :
 
     def game_over(self):
 
-        for (r, c) in self.board.placed_coor:
-            if r == 0: 
-                return True
+        for coors in self.board.placed_coor.values():
+            for (r, c) in coors:
+                if r == 0: 
+                    return True
         return False
 
     def move_right(self):
@@ -81,37 +95,38 @@ class Game :
         return [(r, c-1) for (r, c) in self.current_coor]
 
     def place_down(self):
-        # Calculate the new coordinates by moving the piece down
         new_coor = [(r + self.min_dif - 1, c) for (r, c) in self.current_coor]
-        print('place down coor :', new_coor)
+        # print('place down coor :', new_coor)
         return new_coor
 
     def update_board(self):
 
-        for i in range(self.board.row):
-            for j in range(self.board.col):
-                if (i, j) in self.current_coor:
-                    self.board.board[i][j] = 1
-                else:
-                    self.board.board[i][j] = 0
+        self.board.reset_board()
 
-        if self.board.placed_coor != []:
-            for coor in self.board.placed_coor: 
-                self.board.board[coor[0]][coor[1]] = 1
+        if self.current_coor is not None: 
+            for i in range(self.board.row):
+                for j in range(self.board.col):
+                    if (i, j) in self.current_coor:
+                        self.board.board[i][j] = self._piece_val
+                    else:
+                        self.board.board[i][j] = 0
+
+        for piece_val, coors in self.board.placed_coor.items():
+            for (r, c) in coors : 
+                self.board.board[r, c] = piece_val
         
         if not self._check_touch():
             dif = self.shadow_piece()
             for i in range(self.board.row):
                 for j in range(self.board.col):
                     if (i - (dif - 1), j) in self.current_coor:
-                        self.board.board[i][j] = 2
+                        self.board.board[i][j] = -1
                     if (i, j) in self.current_coor: 
-                        self.board.board[i][j] = 1
+                        self.board.board[i][j] = self._piece_val
 
     def rotate_left(self):
         self._piece, dif = self.piece.rotate_counterclockwise(self._piece)
         new_coor = [(current_row + dif_row, current_col + dif_col) for (current_row, current_col), (dif_row, dif_col) in zip(self.current_coor, dif)]
-
         return new_coor
 
     def rotate_right(self):
@@ -122,11 +137,12 @@ class Game :
     def completed_row(self):
         rows = {}
         delete_row = []
-        for (r, c) in self.board.placed_coor: 
-            if r not in rows : 
-                rows[r] = [c]
-            else : 
-                rows[r].append(c)
+        for coors in self.board.placed_coor.values(): 
+            for (r, c) in coors: 
+                if r not in rows : 
+                    rows[r] = [c]
+                else : 
+                    rows[r].append(c)
         for row, cols in rows.items():
             if len(list(set(cols))) == self.board.col:
                 delete_row.append(row)
@@ -134,25 +150,48 @@ class Game :
         self.current_lines_clear = len(delete_row)
         return delete_row
 
-    def update_placed_coor(self):
+    def delete_completed_row(self):
         delete_row = self.completed_row()
-        delete_row.sort()
-        remain_row = set()
-        for (r, c) in self.board.placed_coor: 
-            if r not in delete_row:
-                remain_row.add(r)
-        
-        remain_row = list(remain_row)
-        remain_row.sort(reverse=True)
-        changed_row = [i for i in range(self.board.row - 1, self.board.row - 1 - len(remain_row), -1)]
-        new_placed_coor = []
+        if delete_row == []:
+            droprow = False
+        else :
+            droprow = True
+        print(f"Row {delete_row} deleted")
+        new_placed_coor = {}
 
-        for (r, c) in self.board.placed_coor: 
-            if r in remain_row: 
-                idx = remain_row.index(r)
-                new_placed_coor.append((changed_row[idx], c))
-        return new_placed_coor
-   
+        for piece_val, coors in self.board.placed_coor.items():
+            for (r, c) in coors:
+                if r in delete_row : 
+                    continue
+                if piece_val not in new_placed_coor: 
+                    new_placed_coor[piece_val] = [(r, c)]
+                else : 
+                    new_placed_coor[piece_val].append((r, c))
+        # print(new_placed_coor) 
+        return new_placed_coor, droprow
+
+    def down_row(self):
+        
+        for r in range(self.board.row - 2, -1, -1):
+            current_row = self.board.board[r, :]
+            if np.all(current_row == 0):
+                continue
+            below_row = self.board.board[r+1, :]
+            current_row = r
+            while np.all(below_row == 0) and current_row < self.board.row - 1:
+                # print(f"Current row ({current_row}) : {self.board.board[r, ]}")
+                # print(f"Below row ({current_row + 1}) : {below_row}")
+                # print(f"Swap {current_row} to {current_row + 1}")
+                self.board.board[[current_row, current_row+1]] = self.board.board[[current_row+1, current_row]]
+                current_row += 1
+                if current_row == 19: 
+                    break
+                below_row = self.board.board[current_row + 1, :]
+
+        # print("done drop")
+        # print(self.board.board)
+        # print()
+
     def point_and_level(self):
         
         '''
@@ -179,6 +218,19 @@ class Game :
         
         self.point += self.point_per_line * self.current_lines_clear
 
+    def update_placed_coor(self):
+        new_placed_coor = {}
+        for r in range(self.board.row):
+            for c in range(self.board.col):
+                cell_value = self.board.board[r, c]
+                if cell_value <= 0: 
+                    continue
+                if cell_value not in new_placed_coor:
+                    new_placed_coor[cell_value] = [(r, c)]
+                else : 
+                    new_placed_coor[cell_value].append((r, c))
+        # print(new_placed_coor)
+        return new_placed_coor
             
     def run(self):
         # game loop 
@@ -194,7 +246,7 @@ class Game :
         self.update_board()
         self.board.printBoard()
 
-        next_shape = self.piece.generate_pieces()
+        next_shape, self.next_shape_val = self.piece.generate_pieces()
         self.board.print_next_shape(next_shape, self.point)
 
         while not self.game_over(): 
@@ -203,9 +255,13 @@ class Game :
                 break
             self.update_board()
             _touch = self._check_touch()
+            
             if inp == 'f': 
                 self.current_coor = self.place_down()
-                self.board.placed_coor.extend(self.current_coor)
+                if self._piece_val in self.board.placed_coor: 
+                    self.board.placed_coor[self._piece_val].extend(self.current_coor)
+                else : 
+                    self.board.placed_coor[self._piece_val] = [*self.current_coor]
                 _touch = True
             if _touch == False:
                 if inp == 't' : 
@@ -221,12 +277,23 @@ class Game :
 
                 self.current_coor = self.drop_piece()
             else : 
+                self.current_coor = None
+                self.update_board()
+                self.board.placed_coor, droprow = self.delete_completed_row()
+                self.update_board()
+                # self.board.placed_coor = self.update_placed_coor()
+                # print(self.board.placed_coor)
+                self.point_and_level()
+                self.update_board()
+                # print(self.board.board)
+                if droprow : 
+                    self.down_row()
+                self.board.placed_coor = self.update_placed_coor()
+                self.update_board()
                 self.spawn_pieces(next=next_shape)
-                next_shape = self.piece.generate_pieces()
+                next_shape, self.next_shape_val = self.piece.generate_pieces()
+                
 
-            self.update_board()
-            self.board.placed_coor = self.update_placed_coor()
-            self.point_and_level()
             self.update_board()
             self.board.printBoard()
             self.board.print_next_shape(next_shape, self.point)
