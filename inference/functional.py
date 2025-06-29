@@ -1,6 +1,6 @@
 from sys import _enablelegacywindowsfsencoding, deactivate_stack_trampoline
-from board import Board
-from pieces import Pieces
+from .board import Board
+from .pieces import Pieces
 import numpy as np
 
 class Game : 
@@ -28,6 +28,15 @@ class Game :
 
     def drop_piece(self):
         return [(min(r+1, self.board.row-1), c) for (r, c) in self.current_coor]
+
+    def check_drop_piece(self):
+
+        current_coor_cp = self.current_coor.copy()
+        
+        self.current_coor = self.drop_piece()
+        touch = self._check_touch()
+        self.current_coor = current_coor_cp
+        return touch
 
     def _check_touch(self):
         if not self.current_coor : return True
@@ -76,8 +85,9 @@ class Game :
 
         for coors in self.board.placed_coor.values():
             for (r, c) in coors:
-                if r == 0: 
-                    return True
+                for (cr, cc) in self.current_coor: 
+                    if r - cr <= 0:
+                        return True
         return False
 
     def move_right(self):
@@ -124,14 +134,25 @@ class Game :
                     if (i, j) in self.current_coor: 
                         self.board.board[i][j] = self._piece_val
 
+    def check_rotate(self, direction, new_coor):
+        dif = 0
+        for r, c, in new_coor: 
+            if c < 0 : 
+                dif = abs(c)
+            if c > self.board.col - 1: 
+                dif = self.board.col - 1 - c
+        return [(r + dif, c + dif) for r, c in new_coor]
+
     def rotate_left(self):
         self._piece, dif = self.piece.rotate_counterclockwise(self._piece)
         new_coor = [(current_row + dif_row, current_col + dif_col) for (current_row, current_col), (dif_row, dif_col) in zip(self.current_coor, dif)]
+        new_coor = self.check_rotate(direction='left', new_coor=new_coor)
         return new_coor
 
     def rotate_right(self):
         self._piece, dif = self.piece.rotate_clockwise(self._piece)
         new_coor = [(current_row + dif_row, current_col + dif_col) for (current_row, current_col), (dif_row, dif_col) in zip(self.current_coor, dif)]
+        new_coor = self.check_rotate(direction='right', new_coor=new_coor)
         return new_coor
 
     def completed_row(self):
@@ -156,7 +177,7 @@ class Game :
             droprow = False
         else :
             droprow = True
-        print(f"Row {delete_row} deleted")
+        # print(f"Row {delete_row} deleted")
         new_placed_coor = {}
 
         for piece_val, coors in self.board.placed_coor.items():
@@ -231,6 +252,15 @@ class Game :
                     new_placed_coor[cell_value].append((r, c))
         # print(new_placed_coor)
         return new_placed_coor
+
+    def reset(self):
+        self.board.reset_board()
+        self.board.placed_coor = {}
+        self.point = 0
+        self.level = 1
+        self.spawn_pieces()
+        self.shadow_piece()
+        next_shape, self.next_shape_val = self.piece.generate_pieces()
             
     def run(self):
         # game loop 
@@ -269,11 +299,15 @@ class Game :
                 if inp == 'r' : 
                     self.current_coor = self.move_left()
                 if inp == 's': 
-                    self.current_coor = self.drop_piece()
+                    check_drop = self.check_drop_piece()
+                    if not check_drop:
+                        self.current_coor = self.drop_piece()
                 if inp == 'w' : # rotate left
                     self.current_coor = self.rotate_left()
                 if inp == 'p' : # rotate right
                     self.current_coor = self.rotate_right()
+                if inp == 'reset':
+                    self.reset()
 
                 self.current_coor = self.drop_piece()
             else : 

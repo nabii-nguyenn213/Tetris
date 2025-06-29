@@ -1,7 +1,7 @@
 import msvcrt
 import time
 
-from functional import Game
+from .functional import Game
 
 from prompt_toolkit.shortcuts import clear
 from prompt_toolkit import print_formatted_text, HTML
@@ -114,7 +114,29 @@ def main():
                     game.current_coor = game.move_right()
                 elif key == 's':
                     print("↓ soft drop")
-                    game.current_coor = game.drop_piece()
+                    check_drop = game.check_drop_piece()
+                    print('CHECK DROP :', check_drop, flush = True)
+                    if not check_drop:
+                        game.current_coor = game.drop_piece()
+                    else : 
+                        running = not game.game_over()
+                        game.current_coor = None
+                        game.update_board()
+                        game.board.placed_coor, droprow = game.delete_completed_row()
+                        game.update_board()
+
+                        game.point_and_level()
+                        game.update_board()
+
+                        if droprow: 
+                            game.down_row()
+
+                        game.board.placed_coor = game.update_placed_coor()
+                        game.update_board()
+
+                        game.spawn_pieces(next = next_shape)
+                        next_shape, game.next_shape_val = game.piece.generate_pieces()
+
                 elif key == 'n':
                     print("↑ rotate left")
                     game.current_coor = game.rotate_left()
@@ -161,7 +183,29 @@ def main():
             # print("\nPiece falls one step")
             touched = game._check_touch()
             if not touched : 
-                game.current_coor = game.drop_piece()
+                check_drop = game.check_drop_piece()
+                if not check_drop:
+                    game.current_coor = game.drop_piece()
+                else : 
+
+                    running = not game.game_over()
+                    game.current_coor = None
+                    game.update_board()
+                    game.board.placed_coor, droprow = game.delete_completed_row()
+                    game.update_board()
+
+                    game.point_and_level()
+                    game.update_board()
+
+                    if droprow: 
+                        game.down_row()
+
+                    game.board.placed_coor = game.update_placed_coor()
+                    game.update_board()
+
+                    game.spawn_pieces(next = next_shape)
+                    next_shape, game.next_shape_val = game.piece.generate_pieces()
+
             else : 
                 running = not game.game_over()
 
